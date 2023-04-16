@@ -6,16 +6,25 @@ import (
 )
 
 // LocalKeys mimics the JSON structure of local key storage
-type LocalKeys struct {
-	Discord string `json:"discord"`
-	Google  string `json:"google"`
-	Notion  string `json:"notion"`
-	Steam   string `json:"steam"`
+type LocalSecrets struct {
+	Discord struct {
+		Key string `json:"key"`
+	} `json:"discord"`
+	Google struct {
+		Key string `json:"key"`
+	} `json:"google"`
+	Notion struct {
+		Key string `json:"key"`
+	} `json:"notion"`
+	Steam struct {
+		ID  string `json:"id"`
+		Key string `json:"key"`
+	} `json:"steam"`
 }
 
 // GetSecrets retrieves secrets
-func GetSecrets() (*LocalKeys, error) {
-	var keys LocalKeys
+func GetSecrets() (*LocalSecrets, error) {
+	var keys LocalSecrets
 	fileContent, err := os.ReadFile("../../local/secrets.json")
 	if err != nil {
 		return nil, err
