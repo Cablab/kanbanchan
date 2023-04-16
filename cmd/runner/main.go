@@ -8,6 +8,28 @@ import (
 )
 
 func main() {
+	secrets, err := internal.GetSecrets()
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	nc, err := ext.NewNotionClient(context.Background())
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	err = nc.GetDatabase(secrets.Notion.GameDB)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+}
+
+// =======================================================
+
+func testSteamWishlist() {
 	sc, err := ext.NewSteamClient(context.Background())
 	if err != nil {
 		fmt.Println(err.Error())
@@ -31,5 +53,5 @@ func testKeys() {
 	}
 
 	fmt.Printf("Discord: %s\nGoogle: %s\nNotion: %s\nSteam: %s\n",
-		keys.Discord.Key, keys.Google.Key, keys.Notion.Key, keys.Steam)
+		keys.Discord.Key, keys.Google.Key, keys.Notion, keys.Steam)
 }

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	baseURL = "https://store.steampowered.com/"
+	steamURL = "https://store.steampowered.com/"
 )
 
 type SteamInterface interface {
@@ -52,7 +52,7 @@ func NewSteamClient(ctx context.Context) (*SteamClient, error) {
 func (sc *SteamClient) GetWishlist() (*map[string]WishlistApp, error) {
 	var wishlist map[string]WishlistApp
 	endpoint := fmt.Sprintf("wishlist/profiles/%s/wishlistdata/", sc.steamID)
-	resp, err := http.Get(fmt.Sprintf("%s%s", baseURL, endpoint))
+	resp, err := http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
 	if err != nil {
 		return nil, err
 	}

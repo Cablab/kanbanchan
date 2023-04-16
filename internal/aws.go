@@ -14,7 +14,12 @@ type LocalSecrets struct {
 		Key string `json:"key"`
 	} `json:"google"`
 	Notion struct {
-		Key string `json:"key"`
+		AuthToken string `json:"authToken"`
+		Workspace string `json:"workspace"`
+		GameDB    string `json:"gameDB"`
+		AnimeDB   string `json:"animeDB"`
+		MovieDB   string `json:"movieDB"`
+		TVDB      string `json:"tvDB"`
 	} `json:"notion"`
 	Steam struct {
 		ID  string `json:"id"`
