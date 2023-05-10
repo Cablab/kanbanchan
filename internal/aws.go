@@ -20,6 +20,8 @@ type LocalSecrets struct {
 		AnimeDB   string `json:"animeDB"`
 		MovieDB   string `json:"movieDB"`
 		TVDB      string `json:"tvDB"`
+		TestGame  string `json:"testGame"`
+		TestFilm  string `json:"testFilm"`
 	} `json:"notion"`
 	Steam struct {
 		ID  string `json:"id"`

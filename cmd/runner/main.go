@@ -8,6 +8,12 @@ import (
 )
 
 func main() {
+	testNotionDatabasePages()
+}
+
+// =======================================================
+
+func testNotionDatabasePages() {
 	secrets, err := internal.GetSecrets()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -20,14 +26,32 @@ func main() {
 		return
 	}
 
-	err = nc.GetDatabase(secrets.Notion.GameDB)
+	err = nc.GetDatabasePages(secrets.Notion.TestGame)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 }
 
-// =======================================================
+func testNotionDatabaseProperties() {
+	secrets, err := internal.GetSecrets()
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	nc, err := ext.NewNotionClient(context.Background())
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	err = nc.GetDatabaseProperties(secrets.Notion.TestGame)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+}
 
 func testSteamWishlist() {
 	sc, err := ext.NewSteamClient(context.Background())
