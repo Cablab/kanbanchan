@@ -1,32 +1,22 @@
 package ext
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"kanbanchan/internal"
-	"net/http"
-)
+	"strings"
 
-const (
-	notionURL          = "https://api.notion.com/v1"
-	headerAuthKey      = "Authorization"
-	headerVersionKey   = "Notion-Version"
-	headerVersionValue = "2022-06-28"
-	contentTypeKey     = "Content-Type"
-	contentTypeJSON    = "application/json"
+	"github.com/jomei/notionapi"
 )
 
 type NotionInterface interface {
-	GetDatabaseProperties(databaseID string) error
+	GetDatabase(databaseID string) error
 	GetDatabasePages(databaseID string) error
 }
 
 type NotionClient struct {
 	ctx       context.Context
-	apiToken  string
+	client    *notionapi.Client
 	workspace string
 	dbIDs     struct {
 		gameDB   string
@@ -59,6 +49,19 @@ type DatabaseQueryResponse struct {
 	Page       interface{}   `json:"page,omitempty"`
 }
 
+type GameProperties struct {
+	Name              *notionapi.TitleProperty       `json:"name,omitempty"`
+	Status            *notionapi.StatusProperty      `json:"status,omitempty"`
+	Tags              *notionapi.MultiSelectProperty `json:"tags,omitempty"`
+	OfficialStorePage *notionapi.URLProperty         `json:"officialStorePage,omitempty"`
+	CompletedDate     *notionapi.DateProperty        `json:"completedDate,omitempty"`
+	CoverArt          *notionapi.FilesProperty       `json:"coverArt,omitempty"`
+	Platform          *notionapi.MultiSelectProperty `json:"platform,omitempty"`
+	ReleaseDate       *notionapi.DateProperty        `json:"releaseDate,omitempty"`
+	Rating            *notionapi.RichTextProperty    `json:"rating,omitempty"`
+	Notes             *notionapi.RichTextProperty    `json:"notes,omitempty"`
+}
+
 func NewNotionClient(ctx context.Context) (*NotionClient, error) {
 	var client NotionClient
 	var secrets, err = internal.GetSecrets()
@@ -72,7 +75,7 @@ func NewNotionClient(ctx context.Context) (*NotionClient, error) {
 		client.ctx = ctx
 	}
 
-	client.apiToken = secrets.Notion.AuthToken
+	client.client = notionapi.NewClient(notionapi.Token(secrets.Notion.AuthToken))
 	client.workspace = secrets.Notion.Workspace
 	client.dbIDs.gameDB = secrets.Notion.GameDB
 	client.dbIDs.animeDB = secrets.Notion.AnimeDB
@@ -84,90 +87,106 @@ func NewNotionClient(ctx context.Context) (*NotionClient, error) {
 	return &client, nil
 }
 
-func (nc *NotionClient) GetDatabaseProperties(databaseID string) error {
-	client := &http.Client{}
-	endpoint := fmt.Sprintf("%s/databases/%s", notionURL, databaseID)
-
-	req, err := http.NewRequest("GET", endpoint, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set(headerVersionKey, headerVersionValue)
-	req.Header.Set(headerAuthKey, nc.apiToken)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
+func (nc *NotionClient) GetDatabase(databaseID string) error {
+	db, err := nc.client.Database.Get(nc.ctx, notionapi.DatabaseID(databaseID))
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(string(body))
+	fmt.Println(db.Properties)
+	for key, pc := range db.Properties {
+		fmt.Printf("Key: %s, PropertyConfig: %v, PropertyConfig Type: %T\n", key, pc, pc)
+	}
+
 	return nil
 }
 
 func (nc *NotionClient) GetDatabasePages(databaseID string) error {
-	var pages []interface{}
-	reqBodyData := DatabaseQueryRequest{
+	var pages []notionapi.Page
+
+	opts := &notionapi.DatabaseQueryRequest{
 		PageSize: 100,
-		Sorts:    []DatabaseSort{{Property: "Name", Direction: "ascending"}},
+		Sorts:    []notionapi.SortObject{{Property: "Name", Direction: "ascending"}},
 	}
-	respBody, err := queryDatabase(nc, databaseID, reqBodyData)
+	res, err := nc.client.Database.Query(nc.ctx, notionapi.DatabaseID(databaseID), opts)
 	if err != nil {
 		return err
 	}
-	pages = append(pages, respBody.Results...)
-	for respBody.HasMore {
-		reqBodyData.StartCursor = respBody.NextCursor
-		respBody, err = queryDatabase(nc, databaseID, reqBodyData)
+	pages = append(pages, res.Results...)
+	for res.HasMore {
+		opts.StartCursor = res.NextCursor
+		res, err = nc.client.Database.Query(nc.ctx, notionapi.DatabaseID(databaseID), opts)
 		if err != nil {
 			return err
 		}
-		pages = append(pages, respBody.Results...)
+		pages = append(pages, res.Results...)
 	}
 
-	fmt.Println(pages)
 	fmt.Println("Total pages found:", len(pages))
+	for _, page := range pages {
+		gp := GameProperties{
+			Name:              page.Properties["Name"].(*notionapi.TitleProperty),
+			Status:            page.Properties["Status"].(*notionapi.StatusProperty),
+			Tags:              page.Properties["Tags"].(*notionapi.MultiSelectProperty),
+			OfficialStorePage: page.Properties["Official Store Page"].(*notionapi.URLProperty),
+			CompletedDate:     page.Properties["Completed Date"].(*notionapi.DateProperty),
+			CoverArt:          page.Properties["Cover Art"].(*notionapi.FilesProperty),
+			Platform:          page.Properties["Platform"].(*notionapi.MultiSelectProperty),
+			ReleaseDate:       page.Properties["Release Date"].(*notionapi.DateProperty),
+			Rating:            page.Properties["Rating"].(*notionapi.RichTextProperty),
+			Notes:             page.Properties["Notes"].(*notionapi.RichTextProperty),
+		}
+		printGameProperties(gp)
+		fmt.Println()
+	}
 	return nil
 }
 
-func queryDatabase(nc *NotionClient, databaseID string, options DatabaseQueryRequest) (*DatabaseQueryResponse, error) {
-	var respBody DatabaseQueryResponse
-	client := &http.Client{}
-	endpoint := fmt.Sprintf("%s/databases/%s/query", notionURL, databaseID)
+func printGameProperties(gp GameProperties) {
+	builder := strings.Builder{}
 
-	reqBody, err := json.Marshal(options)
-	if err != nil {
-		return nil, fmt.Errorf("error marshalling request body: %s", err.Error())
+	builder.WriteString(fmt.Sprintf("Name: %s\n", gp.Name.Title[0].PlainText))
+	builder.WriteString(fmt.Sprintf("Status: %s\n", gp.Status.Status.Name))
+	if len(gp.Rating.RichText) != 0 {
+		builder.WriteString(fmt.Sprintf("Rating: %s\n", gp.Rating.RichText[0].PlainText))
+	} else {
+		builder.WriteString("Rating: <empty>\n")
 	}
-
-	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(reqBody))
-	if err != nil {
-		return nil, fmt.Errorf("error creating request: %s", err.Error())
+	var platforms []string
+	for _, platform := range gp.Platform.MultiSelect {
+		platforms = append(platforms, platform.Name)
 	}
-	req.Header.Set(headerVersionKey, headerVersionValue)
-	req.Header.Set(headerAuthKey, nc.apiToken)
-	req.Header.Set(contentTypeKey, contentTypeJSON)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error sending POST request: %s", err.Error())
+	builder.WriteString(fmt.Sprintf("Platforms: %s\n", strings.Join(platforms[:], ", ")))
+	var tags []string
+	for _, tag := range gp.Tags.MultiSelect {
+		tags = append(tags, tag.Name)
 	}
-	defer resp.Body.Close()
-
-	resBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("error reading response body: %s", err.Error())
+	builder.WriteString(fmt.Sprintf("Tags: %s\n", strings.Join(tags[:], ", ")))
+	if gp.OfficialStorePage != nil {
+		builder.WriteString(fmt.Sprintf("Official Store Page: %s\n", gp.OfficialStorePage.URL))
+	} else {
+		builder.WriteString("Official Store Page: <empty>\n")
 	}
-
-	err = json.Unmarshal(resBody, &respBody)
-	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling response body: %s", err.Error())
+	if len(gp.CoverArt.Files) != 0 {
+		builder.WriteString(fmt.Sprintf("Cover Art: %s\n", gp.CoverArt.Files[0].Name))
+	} else {
+		builder.WriteString("Cover Art: <empty>\n")
 	}
+	if gp.ReleaseDate.Date != nil {
+		builder.WriteString(fmt.Sprintf("Release Date: %s\n", gp.ReleaseDate.Date.Start.String()))
+	} else {
+		builder.WriteString("Release Date: <empty>\n")
+	}
+	if gp.CompletedDate.Date != nil {
 
-	return &respBody, nil
+		builder.WriteString(fmt.Sprintf("Completed Date: %s\n", gp.CompletedDate.Date.Start.String()))
+	} else {
+		builder.WriteString("Completed Date: <empty>\n")
+	}
+	if len(gp.Notes.RichText) != 0 {
+		builder.WriteString(fmt.Sprintf("Notes: %s\n", gp.Notes.RichText[0].PlainText))
+	} else {
+		builder.WriteString("Notes: <empty>\n")
+	}
+	fmt.Print(builder.String())
 }

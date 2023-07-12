@@ -8,6 +8,7 @@ import (
 )
 
 func main() {
+	// testNotionDatabaseProperties()
 	testNotionDatabasePages()
 }
 
@@ -26,7 +27,7 @@ func testNotionDatabasePages() {
 		return
 	}
 
-	err = nc.GetDatabasePages(secrets.Notion.TestGame)
+	err = nc.GetDatabasePages(secrets.Notion.GameDB)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -46,7 +47,7 @@ func testNotionDatabaseProperties() {
 		return
 	}
 
-	err = nc.GetDatabaseProperties(secrets.Notion.TestGame)
+	err = nc.GetDatabase(secrets.Notion.GameDB)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
