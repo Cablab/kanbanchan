@@ -3,25 +3,29 @@ package main
 import (
 	"context"
 	"fmt"
-	"kanbanchan/ext"
-	"kanbanchan/internal"
+	"kanbanchan/internal/aws"
+	"kanbanchan/internal/notion"
+	"kanbanchan/internal/steam"
 )
 
 func main() {
 	// testNotionDatabaseProperties()
-	testNotionDatabasePages()
+	// testNotionDatabasePages()
+	// testSteamWishlist()
+	// testSteamLibrary()
+	// testSteamApp()
 }
 
 // =======================================================
 
 func testNotionDatabasePages() {
-	secrets, err := internal.GetSecrets()
+	secrets, err := aws.GetSecrets()
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 
-	nc, err := ext.NewNotionClient(context.Background())
+	nc, err := notion.NewClient(context.Background())
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -35,13 +39,13 @@ func testNotionDatabasePages() {
 }
 
 func testNotionDatabaseProperties() {
-	secrets, err := internal.GetSecrets()
+	secrets, err := aws.GetSecrets()
 	if err != nil {
 		fmt.Println(err.Error())
 		return
 	}
 
-	nc, err := ext.NewNotionClient(context.Background())
+	nc, err := notion.NewClient(context.Background())
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -55,7 +59,7 @@ func testNotionDatabaseProperties() {
 }
 
 func testSteamWishlist() {
-	sc, err := ext.NewSteamClient(context.Background())
+	sc, err := steam.NewClient(context.Background())
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -70,8 +74,33 @@ func testSteamWishlist() {
 	fmt.Println((*wishlist))
 }
 
+func testSteamLibrary() {
+	sc, err := steam.NewClient(context.Background())
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	sc.GetLibrary()
+}
+
+func testSteamApp() {
+	sc, err := steam.NewClient(context.Background())
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	app, err := sc.GetApp("445980")
+	fmt.Printf("Name: %s\nRelease Date: %s\nGenres: ", app.Data.Name, app.Data.ReleaseDate.Date)
+	for _, genre := range app.Data.Genres {
+		fmt.Printf("%s, ", genre.Description)
+	}
+	fmt.Println()
+}
+
 func testKeys() {
-	keys, err := internal.GetSecrets()
+	keys, err := aws.GetSecrets()
 	if err != nil {
 		fmt.Println(err.Error())
 		return
