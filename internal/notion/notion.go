@@ -1,18 +1,13 @@
-package ext
+package notion
 
 import (
 	"context"
 	"fmt"
-	"kanbanchan/internal"
+	"kanbanchan/internal/aws"
 	"strings"
 
 	"github.com/jomei/notionapi"
 )
-
-type NotionInterface interface {
-	GetDatabase(databaseID string) error
-	GetDatabasePages(databaseID string) error
-}
 
 type NotionClient struct {
 	ctx       context.Context
@@ -62,9 +57,9 @@ type GameProperties struct {
 	Notes             *notionapi.RichTextProperty    `json:"notes,omitempty"`
 }
 
-func NewNotionClient(ctx context.Context) (*NotionClient, error) {
+func NewClient(ctx context.Context) (*NotionClient, error) {
 	var client NotionClient
-	var secrets, err = internal.GetSecrets()
+	var secrets, err = aws.GetSecrets()
 	if err != nil {
 		return nil, err
 	}

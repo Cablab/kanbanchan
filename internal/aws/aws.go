@@ -1,9 +1,17 @@
-package internal
+package aws
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 )
+
+type SecretsClient struct {
+}
+
+func NewClient(ctx context.Context) (*SecretsClient, error) {
+	return nil, nil
+}
 
 // LocalKeys mimics the JSON structure of local key storage
 type LocalSecrets struct {
@@ -24,8 +32,13 @@ type LocalSecrets struct {
 		TestFilm  string `json:"testFilm"`
 	} `json:"notion"`
 	Steam struct {
-		ID  string `json:"id"`
-		Key string `json:"key"`
+		ID          string `json:"id"`
+		Key         string `json:"key"`
+		Collections struct {
+			Completed []json.Number `json:"completed"`
+			Playing   []json.Number `json:"playing"`
+			UpNext    []json.Number `json:"upNext"`
+		} `json:"collections"`
 	} `json:"steam"`
 }
 
