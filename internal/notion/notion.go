@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"kanbanchan/internal/aws"
+	"kanbanchan/internal/steam"
 	"strings"
+	"time"
 
 	"github.com/jomei/notionapi"
 )
@@ -134,6 +136,77 @@ func (nc *NotionClient) GetDatabasePages(databaseID string) error {
 		printGameProperties(gp)
 		fmt.Println()
 	}
+	return nil
+}
+
+func (nc *NotionClient) AddGame(databaseID string, game steam.SteamApp) error {
+	// Name (game name)
+	// Status (Unreleased, Unowned, Backlog, Playing, Completed)
+	// Rating (text "Score: x.y")
+	// Platform (tags like PC, Steam, Nintendo, PlayStation, Epic Games, Xbox, GoG, Ubisoft, EA, Mobile)
+	// Tags (tags for genre)
+	// Official Store Page (link to steam store page)
+	// Cover art (URL to header image)
+	// Release Date (game release date)
+	// Completed Date
+	properties := notionapi.Properties{}
+	properties["Name"] = &notionapi.TitleProperty{
+		Title: []notionapi.RichText{{PlainText: game.Data.Name}},
+	}
+	releaseDate, err := steam.ParseSteamDate(game.Data.ReleaseDate.Date)
+	if err != nil {
+		return err
+	}
+	notionReleaseDate := notionapi.Date(releaseDate)
+	properties["Release Date"] = &notionapi.DateProperty{
+		Date: &notionapi.DateObject{
+			Start: &notionReleaseDate,
+		},
+	}
+	status := "Unreleased"
+	if releaseDate.Before(time.Now()) {
+		status = "Unowned"
+	}
+	properties["Status"] = &notionapi.StatusProperty{
+		Status: notionapi.Option{
+			Name: status,
+		},
+	}
+	properties["Platform"] = &notionapi.MultiSelectProperty{
+		MultiSelect: []notionapi.Option{{Name: "Steam"}},
+	}
+	var genres []notionapi.Option
+	for _, genre := range game.Data.Genres {
+		genres = append(genres, notionapi.Option{Name: genre.Description})
+	}
+	properties["Tags"] = &notionapi.MultiSelectProperty{
+		MultiSelect: genres,
+	}
+
+	page, err := nc.client.Page.Create(nc.ctx, &notionapi.PageCreateRequest{
+		Parent: notionapi.Parent{
+			DatabaseID: notionapi.DatabaseID(databaseID),
+		},
+		Properties: properties,
+	})
+	if err != nil {
+		return err
+	}
+
+	gp := GameProperties{
+		Name:              page.Properties["Name"].(*notionapi.TitleProperty),
+		Status:            page.Properties["Status"].(*notionapi.StatusProperty),
+		Tags:              page.Properties["Tags"].(*notionapi.MultiSelectProperty),
+		OfficialStorePage: page.Properties["Official Store Page"].(*notionapi.URLProperty),
+		CompletedDate:     page.Properties["Completed Date"].(*notionapi.DateProperty),
+		CoverArt:          page.Properties["Cover Art"].(*notionapi.FilesProperty),
+		Platform:          page.Properties["Platform"].(*notionapi.MultiSelectProperty),
+		ReleaseDate:       page.Properties["Release Date"].(*notionapi.DateProperty),
+		Rating:            page.Properties["Rating"].(*notionapi.RichTextProperty),
+		Notes:             page.Properties["Notes"].(*notionapi.RichTextProperty),
+	}
+	printGameProperties(gp)
+
 	return nil
 }
 

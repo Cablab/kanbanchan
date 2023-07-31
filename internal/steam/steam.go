@@ -7,17 +7,43 @@ import (
 	"io"
 	"kanbanchan/internal/aws"
 	"net/http"
+	"strings"
+	"time"
 )
 
 const (
-	steamURL    = "https://store.steampowered.com"
-	steamAPIURL = "https://api.steampowered.com"
+	steamAPIURL     = "https://api.steampowered.com"
+	steamURL        = "https://store.steampowered.com"
+	steamDateFormat = "Jan 2, 2006"
 )
 
 type SteamClient struct {
-	ctx      context.Context
-	steamKey string
-	steamID  string
+	ctx         context.Context
+	steamKey    string
+	steamID     string
+	collections struct {
+		completed []string
+		upNext    []string
+		playing   []string
+	}
+}
+
+type SteamGame struct {
+	ID                       string                 `json:"id,omitempty"`
+	Name                     string                 `json:"name,omitempty"`
+	HeaderImage              string                 `json:"header_image,omitempty"`
+	Genres                   []string               `json:"genres,omitempty"`
+	ReleaseDate              time.Time              `json:"releaseDate,omitempty"`
+	Playtime                 time.Time              `json:"playtime_forever,omitempty"`
+	PlaytimeWindows          time.Time              `json:"playtime_windows_forever,omitempty"`
+	PlaytimeMac              time.Time              `json:"playtime_mac_forever,omitempty"`
+	PlaytimeLinux            time.Time              `json:"playtime_linux_forever,omitempty"`
+	PlaytimeDisconnected     time.Time              `json:"playtime_disconnected,omitempty"`
+	IconURL                  string                 `json:"img_icon_url,omitempty"`
+	LastPlayed               time.Time              `json:"rtime_last_played,omitempty"`
+	HasCommunityVisibleStats bool                   `json:"has_community_visible_stats,omitempty"`
+	Collections              map[string]interface{} `json:"collections,omitempty"`
+	// Tags                     []string  `json:"tags,omitempty"`
 }
 
 type SteamApp struct {
@@ -46,16 +72,17 @@ type WishlistApp struct {
 }
 
 type LibraryApp struct {
-	AppID                    json.Number `json:"appid"`
-	Name                     string      `json:"name"`
-	Playtime                 json.Number `json:"playtime_forever"`
-	PlaytimeWindows          json.Number `json:"playtime_windows_forever"`
-	PlaytimeMac              json.Number `json:"playtime_mac_forever"`
-	PlaytimeLinux            json.Number `json:"playtime_linux_forever"`
-	PlaytimeDisconnected     json.Number `json:"playtime_disconnected"`
-	IconURL                  string      `json:"img_icon_url"`
-	LastPlayed               json.Number `json:"rtime_last_played"`
-	HasCommunityVisibleStats bool        `json:"has_community_visible_stats,omitempty"`
+	AppID                    json.Number            `json:"appid"`
+	Name                     string                 `json:"name"`
+	Playtime                 json.Number            `json:"playtime_forever"`
+	PlaytimeWindows          json.Number            `json:"playtime_windows_forever"`
+	PlaytimeMac              json.Number            `json:"playtime_mac_forever"`
+	PlaytimeLinux            json.Number            `json:"playtime_linux_forever"`
+	PlaytimeDisconnected     json.Number            `json:"playtime_disconnected"`
+	IconURL                  string                 `json:"img_icon_url"`
+	LastPlayed               json.Number            `json:"rtime_last_played"`
+	HasCommunityVisibleStats bool                   `json:"has_community_visible_stats,omitempty"`
+	Collections              map[string]interface{} `json:"collections,omitempty"`
 }
 
 type Library struct {
@@ -80,6 +107,19 @@ func NewClient(ctx context.Context) (*SteamClient, error) {
 
 	client.steamID = secrets.Steam.ID
 	client.steamKey = secrets.Steam.Key
+	var completed, upNext, playing []string
+	for _, jnum := range secrets.Steam.Collections.Completed {
+		completed = append(completed, jnum.String())
+	}
+	for _, jnum := range secrets.Steam.Collections.UpNext {
+		upNext = append(upNext, jnum.String())
+	}
+	for _, jnum := range secrets.Steam.Collections.Playing {
+		playing = append(playing, jnum.String())
+	}
+	client.collections.completed = completed
+	client.collections.upNext = upNext
+	client.collections.playing = playing
 	return &client, nil
 }
 
@@ -124,6 +164,40 @@ func (sc *SteamClient) GetLibrary() (*[]LibraryApp, error) {
 		return nil, err
 	}
 
+	for _, game := range library.Response.Games {
+		collections, err := libraryCollectionCheck(sc, string(game.AppID))
+		if err != nil {
+			return nil, err
+		}
+		game.Collections = collections
+	}
+
+	var appIDs []string
+	for _, game := range library.Response.Games {
+		appIDs = append(appIDs, game.AppID.String())
+	}
+
+	// TODO fix this request
+	var app map[string]SteamApp
+	endpoint = fmt.Sprintf("/api/appdetails?appids=%s", strings.Join(appIDs, ","))
+	resp, err = http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println(resp.Status, resp.StatusCode)
+
+	body, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(body, &app)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("Games found: %v\n", len(app))
+
 	// fmt.Printf("Game Count: %s\n", library.Response.GameCount)
 	// for _, game := range library.Response.Games {
 	// 	fmt.Printf("App ID: %s\tGame Name: %s\tPlaytime: %s minutes\n", game.AppID, game.Name, game.Playtime)
@@ -152,6 +226,37 @@ func (sc *SteamClient) GetApp(appID string) (*SteamApp, error) {
 
 	steamApp := app[appID]
 	return &steamApp, nil
+}
+
+func ParseSteamDate(steamDate string) (time.Time, error) {
+	date, err := time.Parse(steamDateFormat, steamDate)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return date, nil
+}
+
+func libraryCollectionCheck(sc *SteamClient, appID string) (map[string]interface{}, error) {
+	collections := make(map[string]interface{})
+	for _, id := range sc.collections.completed {
+		if id == appID {
+			collections["Completed"] = true
+			break
+		}
+	}
+	for _, id := range sc.collections.upNext {
+		if id == appID {
+			collections["UpNext"] = true
+			break
+		}
+	}
+	for _, id := range sc.collections.playing {
+		if id == appID {
+			collections["Playing"] = true
+			break
+		}
+	}
+	return collections, nil
 }
 
 func getHeaderImage(appID string) string {

@@ -12,7 +12,7 @@ func main() {
 	// testNotionDatabaseProperties()
 	// testNotionDatabasePages()
 	// testSteamWishlist()
-	// testSteamLibrary()
+	testSteamLibrary()
 	// testSteamApp()
 }
 
@@ -81,7 +81,26 @@ func testSteamLibrary() {
 		return
 	}
 
-	sc.GetLibrary()
+	gameLibrary, err := sc.GetLibrary()
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	game, err := sc.GetApp((*gameLibrary)[0].AppID.String())
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	fmt.Printf("Release Date: %s\n", game.Data.ReleaseDate.Date)
+	releaseDate, err := steam.ParseSteamDate(game.Data.ReleaseDate.Date)
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	fmt.Printf("Go Time: %v\n", releaseDate)
 }
 
 func testSteamApp() {
