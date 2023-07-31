@@ -71,7 +71,8 @@ func testSteamWishlist() {
 		return
 	}
 
-	fmt.Println((*wishlist))
+	// fmt.Println((*wishlist))
+	fmt.Println(len(*wishlist))
 }
 
 func testSteamLibrary() {
@@ -90,6 +91,7 @@ func testSteamLibrary() {
 	game := (*gameLibrary)[0]
 
 	fmt.Printf("Release Date: %s\n", game.ReleaseDate)
+	fmt.Println("Games in library:", len(*gameLibrary))
 }
 
 func testSteamApp() {

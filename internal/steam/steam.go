@@ -4,21 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"kanbanchan/internal/aws"
-	"net/http"
+	"kanbanchan/pkg/steam"
+	"strings"
 	"time"
 )
 
 const (
-	steamAPIURL        = "https://api.steampowered.com"
-	steamURL           = "https://store.steampowered.com"
-	steamDateFormat    = "Jan 2, 2006"
-	steamDateAltFormat = "2 Jan, 2006"
+	steamAPIURL         = "https://api.steampowered.com"
+	steamURL            = "https://store.steampowered.com"
+	steamDateFormat     = "Jan 2, 2006"
+	steamDateAltFormat  = "2 Jan, 2006"
+	steamDateYearFormat = "2006"
 )
 
 type SteamClient struct {
-	ctx         context.Context
+	steam       steam.SteamClient
 	steamKey    string
 	steamID     string
 	collections struct {
@@ -96,15 +97,14 @@ func NewClient(ctx context.Context) (*SteamClient, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	if ctx == nil {
-		client.ctx = context.Background()
-	} else {
-		client.ctx = ctx
-	}
-
 	client.steamID = secrets.Steam.ID
 	client.steamKey = secrets.Steam.Key
+	steamClient, err := steam.NewClient(context.Background(), client.steamKey)
+	if err != nil {
+		return nil, err
+	}
+	client.steam = *steamClient
+
 	var completed, upNext, playing []string
 	for _, jnum := range secrets.Steam.Collections.Completed {
 		completed = append(completed, jnum.String())
@@ -122,27 +122,14 @@ func NewClient(ctx context.Context) (*SteamClient, error) {
 }
 
 func (sc *SteamClient) GetWishlist() (*[]SteamGame, error) {
-	var wishlist map[string]WishlistApp
-	endpoint := fmt.Sprintf("/wishlist/profiles/%s/wishlistdata/", sc.steamID)
-	resp, err := http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	err = json.Unmarshal(body, &wishlist)
+	wishlist, err := sc.steam.GetUserWishlist(sc.steamID)
 	if err != nil {
 		return nil, err
 	}
 
 	var games []SteamGame
-	for id, _ := range wishlist {
-		steamApp, err := sc.GetApp(string(id))
+	for id, _ := range *wishlist {
+		steamApp, err := sc.steam.GetApp(string(id))
 		if err != nil {
 			return nil, err
 		}
@@ -150,16 +137,19 @@ func (sc *SteamClient) GetWishlist() (*[]SteamGame, error) {
 		for _, genre := range steamApp.Data.Genres {
 			genres = append(genres, genre.Description)
 		}
-		releaseDate, err := ParseSteamDate(steamApp.Data.ReleaseDate.Date)
-		if err != nil {
-			return nil, err
-		}
 		game := SteamGame{
 			ID:          id,
 			Name:        steamApp.Data.Name,
 			HeaderImage: steamApp.Data.HeaderImage,
 			Genres:      genres,
-			ReleaseDate: releaseDate,
+		}
+		if strings.ToLower(steamApp.Data.ReleaseDate.Date) != "to be announced" &&
+			steamApp.Data.ReleaseDate.Date != "" {
+			releaseDate, err := ParseSteamDate(steamApp.Data.ReleaseDate.Date)
+			if err != nil {
+				return nil, err
+			}
+			game.ReleaseDate = releaseDate
 		}
 		games = append(games, game)
 	}
@@ -168,39 +158,24 @@ func (sc *SteamClient) GetWishlist() (*[]SteamGame, error) {
 }
 
 func (sc *SteamClient) GetLibrary() (*[]SteamGame, error) {
-	// Optional URL Params: &skip_unvetted_apps=false | &include_played_free_games=1 | &include_appinfo=1
-	var library Library
-	endpoint := fmt.Sprintf("/IPlayerService/GetOwnedGames/v0001/?key=%s&steamid=%s&include_appinfo=1&include_played_free_games=1&skip_unvetted_apps=false&format=json", sc.steamKey, sc.steamID)
-	resp, err := http.Get(fmt.Sprintf("%s%s", steamAPIURL, endpoint))
+	library, err := sc.steam.GetUserOwnedGames(sc.steamID)
 	if err != nil {
 		return nil, err
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	err = json.Unmarshal(body, &library)
-	if err != nil {
-		return nil, err
-	}
-
-	for i, game := range library.Response.Games {
-		collections, err := libraryCollectionCheck(sc, string(game.AppID))
+	collectionMap := make(map[string]map[string]bool)
+	for _, game := range library.Response.Games {
+		collections, err := libraryCollectionCheck(sc, game.AppID.String())
 		if err != nil {
 			return nil, err
 		}
-		library.Response.Games[i].Collections = collections
+		collectionMap[game.AppID.String()] = collections
 	}
 
-	// LibraryApp Only: Playtime, PlaytimeWindows, PlaytimeMac, PlaytimeLinux, PlaytimeDisconnected, LastPlayed, HasCommunityVisibleStats, Collections
-	// SteamApp Only: HeaderImage, Genres, Release Date
-	// Both (default SteamApp): ID, Name
 	var games []SteamGame
 	for _, game := range library.Response.Games {
-		if len(game.Collections) > 0 {
-			steamApp, err := sc.GetApp(string(game.AppID))
+		if len(collectionMap[game.AppID.String()]) > 0 {
+			steamApp, err := sc.steam.GetApp(string(game.AppID))
 			if err != nil {
 				return nil, err
 			}
@@ -249,51 +224,45 @@ func (sc *SteamClient) GetLibrary() (*[]SteamGame, error) {
 				PlaytimeDisconnected:     ParsePlaytime(iPlaytimeDisconnected),
 				LastPlayed:               ParsePlaytime(iLastPlayed),
 				HasCommunityVisibleStats: game.HasCommunityVisibleStats,
-				Collections:              game.Collections,
+				Collections:              collectionMap[game.AppID.String()],
 			}
 			games = append(games, game)
 		}
 	}
 
-	// fmt.Printf("Game Count: %s\n", library.Response.GameCount)
-	// for _, game := range library.Response.Games {
-	// 	fmt.Printf("App ID: %s\tGame Name: %s\tPlaytime: %s minutes\n", game.AppID, game.Name, game.Playtime)
-	// 	// fmt.Printf("%s , %s\n", game.Name, game.AppID) // Use for easy app ID searching for manual collections
-	// }
 	return &games, nil
 }
 
-func (sc *SteamClient) GetApp(appID string) (*SteamApp, error) {
-	var app map[string]SteamApp
-	endpoint := fmt.Sprintf("/api/appdetails?appids=%s", appID)
-	resp, err := http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
+func (sc *SteamClient) GetApp(appID string) (*steam.SteamApp, error) {
+	steamApp, err := sc.steam.GetApp(appID)
 	if err != nil {
 		return nil, err
 	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	err = json.Unmarshal(body, &app)
-	if err != nil {
-		return nil, err
-	}
-
-	steamApp := app[appID]
-	return &steamApp, nil
+	return steamApp, nil
 }
 
 func ParseSteamDate(steamDate string) (time.Time, error) {
 	date, err := time.Parse(steamDateFormat, steamDate)
 	if err != nil {
-		date, err = time.Parse(steamDateAltFormat, steamDate)
-		if err != nil {
-			return time.Time{}, err
-		}
+		// fmt.Println("failed to parse release date in standard format; attempting alt format...")
+	} else {
+		return date, nil
 	}
-	return date, nil
+
+	date, err = time.Parse(steamDateAltFormat, steamDate)
+	if err != nil {
+		// fmt.Println("failed to parse release date in alt format; attempting year format...")
+	} else {
+		return date, nil
+	}
+
+	date, err = time.Parse(steamDateYearFormat, steamDate)
+	if err != nil {
+		// fmt.Println("failed to parse release date in year format")
+		return time.Time{}, nil
+	} else {
+		return date, nil
+	}
 }
 
 func ParsePlaytime(timestamp int64) time.Time {
