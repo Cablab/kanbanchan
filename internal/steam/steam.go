@@ -3,7 +3,6 @@ package steam
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"kanbanchan/internal/aws"
 	"kanbanchan/pkg/steam"
 	"strings"
@@ -128,7 +127,7 @@ func (sc *SteamClient) GetWishlist() (*[]SteamGame, error) {
 	}
 
 	var games []SteamGame
-	for id, _ := range *wishlist {
+	for id := range *wishlist {
 		steamApp, err := sc.steam.GetApp(string(id))
 		if err != nil {
 			return nil, err
@@ -290,8 +289,4 @@ func libraryCollectionCheck(sc *SteamClient, appID string) (map[string]bool, err
 		}
 	}
 	return collections, nil
-}
-
-func getHeaderImage(appID string) string {
-	return fmt.Sprintf("https://cdn.cloudflare.steamstatic.com/steam/apps/%s/header.jpg", appID)
 }
