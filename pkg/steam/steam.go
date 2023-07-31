@@ -77,6 +77,7 @@ func NewClient(ctx context.Context, steamKey string) (*SteamClient, error) {
 	return &client, nil
 }
 
+// TODO paginate with ?p=0 (page 0), ?p=1 (page 1), etc. at the end of the URL until nothing is returned (still 200, just empty array)
 func (sc *SteamClient) GetUserWishlist(steamUserID string) (*map[string]WishlistApp, error) {
 	var wishlist map[string]WishlistApp
 	endpoint := fmt.Sprintf("/wishlist/profiles/%s/wishlistdata/", steamUserID)
