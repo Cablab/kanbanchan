@@ -139,33 +139,29 @@ func (nc *NotionClient) GetDatabasePages(databaseID string) error {
 	return nil
 }
 
-func (nc *NotionClient) AddGame(databaseID string, game steam.SteamApp) error {
-	// Name (game name)
-	// Status (Unreleased, Unowned, Backlog, Playing, Completed)
-	// Rating (text "Score: x.y")
-	// Platform (tags like PC, Steam, Nintendo, PlayStation, Epic Games, Xbox, GoG, Ubisoft, EA, Mobile)
-	// Tags (tags for genre)
-	// Official Store Page (link to steam store page)
-	// Cover art (URL to header image)
-	// Release Date (game release date)
-	// Completed Date
+func (nc *NotionClient) AddGame(databaseID string, game steam.SteamGame) error {
 	properties := notionapi.Properties{}
-	properties["Name"] = &notionapi.TitleProperty{
-		Title: []notionapi.RichText{{PlainText: game.Data.Name}},
-	}
-	releaseDate, err := steam.ParseSteamDate(game.Data.ReleaseDate.Date)
-	if err != nil {
-		return err
-	}
-	notionReleaseDate := notionapi.Date(releaseDate)
-	properties["Release Date"] = &notionapi.DateProperty{
-		Date: &notionapi.DateObject{
-			Start: &notionReleaseDate,
-		},
-	}
 	status := "Unreleased"
-	if releaseDate.Before(time.Now()) {
+	upNextVal, upNextOk := game.Collections["UpNext"]
+	playingVal, playingOk := game.Collections["Playing"]
+	completedVal, completedOk := game.Collections["Completed"]
+	if game.ReleaseDate.Before(time.Now()) {
 		status = "Unowned"
+	} else if upNextOk && upNextVal {
+		status = "Up Next"
+	} else if playingOk && playingVal {
+		status = "Playing"
+	} else if completedOk && completedVal {
+		status = "Completed"
+	}
+	var genres []notionapi.Option
+	for _, genre := range game.Genres {
+		genres = append(genres, notionapi.Option{Name: genre})
+	}
+	notionReleaseDate := notionapi.Date(game.ReleaseDate)
+
+	properties["Name"] = &notionapi.TitleProperty{
+		Title: []notionapi.RichText{{PlainText: game.Name}},
 	}
 	properties["Status"] = &notionapi.StatusProperty{
 		Status: notionapi.Option{
@@ -173,14 +169,19 @@ func (nc *NotionClient) AddGame(databaseID string, game steam.SteamApp) error {
 		},
 	}
 	properties["Platform"] = &notionapi.MultiSelectProperty{
-		MultiSelect: []notionapi.Option{{Name: "Steam"}},
-	}
-	var genres []notionapi.Option
-	for _, genre := range game.Data.Genres {
-		genres = append(genres, notionapi.Option{Name: genre.Description})
+		MultiSelect: []notionapi.Option{{Name: "Steam"}, {Name: "kanbanchan"}},
 	}
 	properties["Tags"] = &notionapi.MultiSelectProperty{
 		MultiSelect: genres,
+	}
+	properties["Official Store Page"] = &notionapi.URLProperty{URL: fmt.Sprintf("https://store.steampowered.com/app/%s", game.ID)}
+	properties["Cover Art"] = &notionapi.FilesProperty{
+		Files: []notionapi.File{{Name: game.HeaderImage}},
+	}
+	properties["Release Date"] = &notionapi.DateProperty{
+		Date: &notionapi.DateObject{
+			Start: &notionReleaseDate,
+		},
 	}
 
 	page, err := nc.client.Page.Create(nc.ctx, &notionapi.PageCreateRequest{

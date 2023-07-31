@@ -7,14 +7,14 @@ import (
 	"io"
 	"kanbanchan/internal/aws"
 	"net/http"
-	"strings"
 	"time"
 )
 
 const (
-	steamAPIURL     = "https://api.steampowered.com"
-	steamURL        = "https://store.steampowered.com"
-	steamDateFormat = "Jan 2, 2006"
+	steamAPIURL        = "https://api.steampowered.com"
+	steamURL           = "https://store.steampowered.com"
+	steamDateFormat    = "Jan 2, 2006"
+	steamDateAltFormat = "2 Jan, 2006"
 )
 
 type SteamClient struct {
@@ -29,21 +29,19 @@ type SteamClient struct {
 }
 
 type SteamGame struct {
-	ID                       string                 `json:"id,omitempty"`
-	Name                     string                 `json:"name,omitempty"`
-	HeaderImage              string                 `json:"header_image,omitempty"`
-	Genres                   []string               `json:"genres,omitempty"`
-	ReleaseDate              time.Time              `json:"releaseDate,omitempty"`
-	Playtime                 time.Time              `json:"playtime_forever,omitempty"`
-	PlaytimeWindows          time.Time              `json:"playtime_windows_forever,omitempty"`
-	PlaytimeMac              time.Time              `json:"playtime_mac_forever,omitempty"`
-	PlaytimeLinux            time.Time              `json:"playtime_linux_forever,omitempty"`
-	PlaytimeDisconnected     time.Time              `json:"playtime_disconnected,omitempty"`
-	IconURL                  string                 `json:"img_icon_url,omitempty"`
-	LastPlayed               time.Time              `json:"rtime_last_played,omitempty"`
-	HasCommunityVisibleStats bool                   `json:"has_community_visible_stats,omitempty"`
-	Collections              map[string]interface{} `json:"collections,omitempty"`
-	// Tags                     []string  `json:"tags,omitempty"`
+	ID                       string          `json:"id,omitempty"`
+	Name                     string          `json:"name,omitempty"`
+	HeaderImage              string          `json:"header_image,omitempty"`
+	Genres                   []string        `json:"genres,omitempty"`
+	ReleaseDate              time.Time       `json:"releaseDate,omitempty"`
+	Playtime                 time.Time       `json:"playtime_forever,omitempty"`
+	PlaytimeWindows          time.Time       `json:"playtime_windows_forever,omitempty"`
+	PlaytimeMac              time.Time       `json:"playtime_mac_forever,omitempty"`
+	PlaytimeLinux            time.Time       `json:"playtime_linux_forever,omitempty"`
+	PlaytimeDisconnected     time.Time       `json:"playtime_disconnected,omitempty"`
+	LastPlayed               time.Time       `json:"rtime_last_played,omitempty"`
+	HasCommunityVisibleStats bool            `json:"has_community_visible_stats,omitempty"`
+	Collections              map[string]bool `json:"collections,omitempty"`
 }
 
 type SteamApp struct {
@@ -72,17 +70,17 @@ type WishlistApp struct {
 }
 
 type LibraryApp struct {
-	AppID                    json.Number            `json:"appid"`
-	Name                     string                 `json:"name"`
-	Playtime                 json.Number            `json:"playtime_forever"`
-	PlaytimeWindows          json.Number            `json:"playtime_windows_forever"`
-	PlaytimeMac              json.Number            `json:"playtime_mac_forever"`
-	PlaytimeLinux            json.Number            `json:"playtime_linux_forever"`
-	PlaytimeDisconnected     json.Number            `json:"playtime_disconnected"`
-	IconURL                  string                 `json:"img_icon_url"`
-	LastPlayed               json.Number            `json:"rtime_last_played"`
-	HasCommunityVisibleStats bool                   `json:"has_community_visible_stats,omitempty"`
-	Collections              map[string]interface{} `json:"collections,omitempty"`
+	AppID                    json.Number     `json:"appid"`
+	Name                     string          `json:"name"`
+	Playtime                 json.Number     `json:"playtime_forever"`
+	PlaytimeWindows          json.Number     `json:"playtime_windows_forever"`
+	PlaytimeMac              json.Number     `json:"playtime_mac_forever"`
+	PlaytimeLinux            json.Number     `json:"playtime_linux_forever"`
+	PlaytimeDisconnected     json.Number     `json:"playtime_disconnected"`
+	IconURL                  string          `json:"img_icon_url"`
+	LastPlayed               json.Number     `json:"rtime_last_played"`
+	HasCommunityVisibleStats bool            `json:"has_community_visible_stats,omitempty"`
+	Collections              map[string]bool `json:"collections,omitempty"`
 }
 
 type Library struct {
@@ -123,7 +121,7 @@ func NewClient(ctx context.Context) (*SteamClient, error) {
 	return &client, nil
 }
 
-func (sc *SteamClient) GetWishlist() (*map[string]WishlistApp, error) {
+func (sc *SteamClient) GetWishlist() (*[]SteamGame, error) {
 	var wishlist map[string]WishlistApp
 	endpoint := fmt.Sprintf("/wishlist/profiles/%s/wishlistdata/", sc.steamID)
 	resp, err := http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
@@ -142,10 +140,34 @@ func (sc *SteamClient) GetWishlist() (*map[string]WishlistApp, error) {
 		return nil, err
 	}
 
-	return &wishlist, nil
+	var games []SteamGame
+	for id, _ := range wishlist {
+		steamApp, err := sc.GetApp(string(id))
+		if err != nil {
+			return nil, err
+		}
+		var genres []string
+		for _, genre := range steamApp.Data.Genres {
+			genres = append(genres, genre.Description)
+		}
+		releaseDate, err := ParseSteamDate(steamApp.Data.ReleaseDate.Date)
+		if err != nil {
+			return nil, err
+		}
+		game := SteamGame{
+			ID:          id,
+			Name:        steamApp.Data.Name,
+			HeaderImage: steamApp.Data.HeaderImage,
+			Genres:      genres,
+			ReleaseDate: releaseDate,
+		}
+		games = append(games, game)
+	}
+
+	return &games, nil
 }
 
-func (sc *SteamClient) GetLibrary() (*[]LibraryApp, error) {
+func (sc *SteamClient) GetLibrary() (*[]SteamGame, error) {
 	// Optional URL Params: &skip_unvetted_apps=false | &include_played_free_games=1 | &include_appinfo=1
 	var library Library
 	endpoint := fmt.Sprintf("/IPlayerService/GetOwnedGames/v0001/?key=%s&steamid=%s&include_appinfo=1&include_played_free_games=1&skip_unvetted_apps=false&format=json", sc.steamKey, sc.steamID)
@@ -164,46 +186,81 @@ func (sc *SteamClient) GetLibrary() (*[]LibraryApp, error) {
 		return nil, err
 	}
 
-	for _, game := range library.Response.Games {
+	for i, game := range library.Response.Games {
 		collections, err := libraryCollectionCheck(sc, string(game.AppID))
 		if err != nil {
 			return nil, err
 		}
-		game.Collections = collections
+		library.Response.Games[i].Collections = collections
 	}
 
-	var appIDs []string
+	// LibraryApp Only: Playtime, PlaytimeWindows, PlaytimeMac, PlaytimeLinux, PlaytimeDisconnected, LastPlayed, HasCommunityVisibleStats, Collections
+	// SteamApp Only: HeaderImage, Genres, Release Date
+	// Both (default SteamApp): ID, Name
+	var games []SteamGame
 	for _, game := range library.Response.Games {
-		appIDs = append(appIDs, game.AppID.String())
+		if len(game.Collections) > 0 {
+			steamApp, err := sc.GetApp(string(game.AppID))
+			if err != nil {
+				return nil, err
+			}
+			var genres []string
+			for _, genre := range steamApp.Data.Genres {
+				genres = append(genres, genre.Description)
+			}
+			releaseDate, err := ParseSteamDate(steamApp.Data.ReleaseDate.Date)
+			if err != nil {
+				return nil, err
+			}
+			iPlaytime, err := game.Playtime.Int64()
+			if err != nil {
+				return nil, err
+			}
+			iPlaytimeWindows, err := game.PlaytimeWindows.Int64()
+			if err != nil {
+				return nil, err
+			}
+			iPlaytimeMac, err := game.PlaytimeMac.Int64()
+			if err != nil {
+				return nil, err
+			}
+			iPlaytimeLinux, err := game.PlaytimeLinux.Int64()
+			if err != nil {
+				return nil, err
+			}
+			iPlaytimeDisconnected, err := game.PlaytimeDisconnected.Int64()
+			if err != nil {
+				return nil, err
+			}
+			iLastPlayed, err := game.LastPlayed.Int64()
+			if err != nil {
+				return nil, err
+			}
+			game := SteamGame{
+				ID:                       string(steamApp.Data.AppID),
+				Name:                     steamApp.Data.Name,
+				HeaderImage:              steamApp.Data.HeaderImage,
+				Genres:                   genres,
+				ReleaseDate:              releaseDate,
+				Playtime:                 ParsePlaytime(iPlaytime),
+				PlaytimeWindows:          ParsePlaytime(iPlaytimeWindows),
+				PlaytimeMac:              ParsePlaytime(iPlaytimeMac),
+				PlaytimeLinux:            ParsePlaytime(iPlaytimeLinux),
+				PlaytimeDisconnected:     ParsePlaytime(iPlaytimeDisconnected),
+				LastPlayed:               ParsePlaytime(iLastPlayed),
+				HasCommunityVisibleStats: game.HasCommunityVisibleStats,
+				Collections:              game.Collections,
+			}
+			games = append(games, game)
+		}
 	}
-
-	// TODO fix this request
-	var app map[string]SteamApp
-	endpoint = fmt.Sprintf("/api/appdetails?appids=%s", strings.Join(appIDs, ","))
-	resp, err = http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println(resp.Status, resp.StatusCode)
-
-	body, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	err = json.Unmarshal(body, &app)
-	if err != nil {
-		return nil, err
-	}
-
-	fmt.Printf("Games found: %v\n", len(app))
 
 	// fmt.Printf("Game Count: %s\n", library.Response.GameCount)
 	// for _, game := range library.Response.Games {
 	// 	fmt.Printf("App ID: %s\tGame Name: %s\tPlaytime: %s minutes\n", game.AppID, game.Name, game.Playtime)
 	// 	// fmt.Printf("%s , %s\n", game.Name, game.AppID) // Use for easy app ID searching for manual collections
 	// }
-	return &library.Response.Games, nil
+	return &games, nil
 }
 
 func (sc *SteamClient) GetApp(appID string) (*SteamApp, error) {
@@ -231,13 +288,20 @@ func (sc *SteamClient) GetApp(appID string) (*SteamApp, error) {
 func ParseSteamDate(steamDate string) (time.Time, error) {
 	date, err := time.Parse(steamDateFormat, steamDate)
 	if err != nil {
-		return time.Time{}, err
+		date, err = time.Parse(steamDateAltFormat, steamDate)
+		if err != nil {
+			return time.Time{}, err
+		}
 	}
 	return date, nil
 }
 
-func libraryCollectionCheck(sc *SteamClient, appID string) (map[string]interface{}, error) {
-	collections := make(map[string]interface{})
+func ParsePlaytime(timestamp int64) time.Time {
+	return time.Unix(timestamp, 0)
+}
+
+func libraryCollectionCheck(sc *SteamClient, appID string) (map[string]bool, error) {
+	collections := make(map[string]bool)
 	for _, id := range sc.collections.completed {
 		if id == appID {
 			collections["Completed"] = true
