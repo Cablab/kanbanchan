@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"kanbanchan/internal/aws"
 	"kanbanchan/internal/steam"
+	"kanbanchan/pkg/notion"
 	"strings"
 	"time"
 
 	"github.com/jomei/notionapi"
 )
 
+// NotionClient contains a usable Notion client and information about
+// databases in the workspace
 type NotionClient struct {
-	ctx       context.Context
-	client    *notionapi.Client
+	client    notion.NotionClient
 	workspace string
 	dbIDs     struct {
 		gameDB   string
@@ -25,27 +27,7 @@ type NotionClient struct {
 	}
 }
 
-type DatabaseQueryRequest struct {
-	Filter      interface{}    `json:"filter,omitempty"`
-	Sorts       []DatabaseSort `json:"sorts,omitempty"`
-	StartCursor string         `json:"start_cursor,omitempty"`
-	PageSize    int32          `json:"page_size,omitempty"`
-}
-
-type DatabaseSort struct {
-	Property  string `json:"property"`
-	Direction string `json:"direction"`
-}
-
-type DatabaseQueryResponse struct {
-	Object     string        `json:"object,omitempty"`
-	Results    []interface{} `json:"results,omitempty"`
-	NextCursor string        `json:"next_cursor,omitempty"`
-	HasMore    bool          `json:"has_more,omitempty"`
-	Type       string        `json:"type,omitempty"`
-	Page       interface{}   `json:"page,omitempty"`
-}
-
+// GameProperties contains info about pages in the Games database
 type GameProperties struct {
 	Name              *notionapi.TitleProperty       `json:"name,omitempty"`
 	Status            *notionapi.StatusProperty      `json:"status,omitempty"`
@@ -59,20 +41,21 @@ type GameProperties struct {
 	Notes             *notionapi.RichTextProperty    `json:"notes,omitempty"`
 }
 
+// NewClient sets up an authenticated Notion client and user information about
+// databases in the workspace
 func NewClient(ctx context.Context) (*NotionClient, error) {
 	var client NotionClient
 	var secrets, err = aws.GetSecrets()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to retrieve secrets: %s", err.Error())
 	}
 
-	if ctx == nil {
-		client.ctx = context.Background()
-	} else {
-		client.ctx = ctx
+	notionClient, err := notion.NewClient(ctx, secrets.Notion.AuthToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create notion client: %s", err.Error())
 	}
 
-	client.client = notionapi.NewClient(notionapi.Token(secrets.Notion.AuthToken))
+	client.client = *notionClient
 	client.workspace = secrets.Notion.Workspace
 	client.dbIDs.gameDB = secrets.Notion.GameDB
 	client.dbIDs.animeDB = secrets.Notion.AnimeDB
@@ -84,44 +67,30 @@ func NewClient(ctx context.Context) (*NotionClient, error) {
 	return &client, nil
 }
 
-func (nc *NotionClient) GetDatabase(databaseID string) error {
-	db, err := nc.client.Database.Get(nc.ctx, notionapi.DatabaseID(databaseID))
+// GetDatabase retrieves the specified database
+func (nc *NotionClient) GetDatabase(databaseID string) (*notionapi.Database, error) {
+	db, err := nc.client.GetDatabase(databaseID)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("failed to get database: %s", err.Error())
 	}
 
-	fmt.Println(db.Properties)
-	for key, pc := range db.Properties {
-		fmt.Printf("Key: %s, PropertyConfig: %v, PropertyConfig Type: %T\n", key, pc, pc)
-	}
-
-	return nil
+	return db, nil
 }
 
-func (nc *NotionClient) GetDatabasePages(databaseID string) error {
-	var pages []notionapi.Page
-
+// GetGamePages retrieves all pages in the Games DB
+func (nc *NotionClient) GetGamePages() (*map[string]GameProperties, error) {
 	opts := &notionapi.DatabaseQueryRequest{
 		PageSize: 100,
 		Sorts:    []notionapi.SortObject{{Property: "Name", Direction: "ascending"}},
 	}
-	res, err := nc.client.Database.Query(nc.ctx, notionapi.DatabaseID(databaseID), opts)
+	pages, err := nc.client.GetDatabasePages(nc.dbIDs.gameDB, opts)
 	if err != nil {
-		return err
-	}
-	pages = append(pages, res.Results...)
-	for res.HasMore {
-		opts.StartCursor = res.NextCursor
-		res, err = nc.client.Database.Query(nc.ctx, notionapi.DatabaseID(databaseID), opts)
-		if err != nil {
-			return err
-		}
-		pages = append(pages, res.Results...)
+		return nil, fmt.Errorf("failed to get game pages: %s", err.Error())
 	}
 
-	fmt.Println("Total pages found:", len(pages))
+	games := make(map[string]GameProperties)
 	for _, page := range pages {
-		gp := GameProperties{
+		game := GameProperties{
 			Name:              page.Properties["Name"].(*notionapi.TitleProperty),
 			Status:            page.Properties["Status"].(*notionapi.StatusProperty),
 			Tags:              page.Properties["Tags"].(*notionapi.MultiSelectProperty),
@@ -133,12 +102,15 @@ func (nc *NotionClient) GetDatabasePages(databaseID string) error {
 			Rating:            page.Properties["Rating"].(*notionapi.RichTextProperty),
 			Notes:             page.Properties["Notes"].(*notionapi.RichTextProperty),
 		}
-		printGameProperties(gp)
-		fmt.Println()
+		_, ok := games[game.Name.Title[0].PlainText]
+		if !ok {
+			games[game.Name.Title[0].PlainText] = game
+		}
 	}
-	return nil
+	return &games, nil
 }
 
+// AddGame adds a game to the Games DB
 func (nc *NotionClient) AddGame(databaseID string, game steam.SteamGame) error {
 	properties := notionapi.Properties{}
 	status := "Unreleased"
@@ -184,14 +156,14 @@ func (nc *NotionClient) AddGame(databaseID string, game steam.SteamGame) error {
 		},
 	}
 
-	page, err := nc.client.Page.Create(nc.ctx, &notionapi.PageCreateRequest{
+	page, err := nc.client.CreatePage(&notionapi.PageCreateRequest{
 		Parent: notionapi.Parent{
 			DatabaseID: notionapi.DatabaseID(databaseID),
 		},
 		Properties: properties,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to add game: %s", err.Error())
 	}
 
 	gp := GameProperties{
@@ -206,12 +178,13 @@ func (nc *NotionClient) AddGame(databaseID string, game steam.SteamGame) error {
 		Rating:            page.Properties["Rating"].(*notionapi.RichTextProperty),
 		Notes:             page.Properties["Notes"].(*notionapi.RichTextProperty),
 	}
-	printGameProperties(gp)
+	PrintGameProperties(gp)
 
 	return nil
 }
 
-func printGameProperties(gp GameProperties) {
+// PrintGameProperties prints the columns of a game from the Games DB in readable format
+func PrintGameProperties(gp GameProperties) {
 	builder := strings.Builder{}
 
 	builder.WriteString(fmt.Sprintf("Name: %s\n", gp.Name.Title[0].PlainText))

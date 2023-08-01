@@ -3,6 +3,7 @@ package steam
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"kanbanchan/internal/aws"
 	"kanbanchan/pkg/steam"
 	"strings"
@@ -17,6 +18,7 @@ const (
 	steamDateYearFormat = "2006"
 )
 
+// SteamClient contains auth info, a client, and manually tracked Library Collections
 type SteamClient struct {
 	steam       steam.SteamClient
 	steamKey    string
@@ -28,6 +30,7 @@ type SteamClient struct {
 	}
 }
 
+// SteamGame contains info about a Steam Game
 type SteamGame struct {
 	ID                       string          `json:"id,omitempty"`
 	Name                     string          `json:"name,omitempty"`
@@ -44,6 +47,7 @@ type SteamGame struct {
 	Collections              map[string]bool `json:"collections,omitempty"`
 }
 
+// SteamApp contains info about a Steam App
 type SteamApp struct {
 	Success bool `json:"success"`
 	Data    struct {
@@ -61,6 +65,7 @@ type SteamApp struct {
 	} `json:"data"`
 }
 
+// WishlistApp contains info about an app on a Wishlist
 type WishlistApp struct {
 	Name        string      `json:"name"`
 	Capsule     string      `json:"capsule"`
@@ -69,6 +74,7 @@ type WishlistApp struct {
 	Tags        []string    `json:"tags"`
 }
 
+// LibraryApp contains info about an app in a user's Library
 type LibraryApp struct {
 	AppID                    json.Number     `json:"appid"`
 	Name                     string          `json:"name"`
@@ -83,6 +89,7 @@ type LibraryApp struct {
 	Collections              map[string]bool `json:"collections,omitempty"`
 }
 
+// Library contains info about games owned by a user
 type Library struct {
 	Response struct {
 		GameCount json.Number  `json:"game_count"`
@@ -90,6 +97,8 @@ type Library struct {
 	} `json:"response"`
 }
 
+// NewClient creates an authenticated client and sets up manually tracked
+// library Collections (since those can't be retrieved via API yet)
 func NewClient(ctx context.Context) (*SteamClient, error) {
 	var client SteamClient
 	var secrets, err = aws.GetSecrets()
@@ -120,15 +129,17 @@ func NewClient(ctx context.Context) (*SteamClient, error) {
 	return &client, nil
 }
 
-func (sc *SteamClient) GetWishlist() (*[]SteamGame, error) {
+// GetWishlist gets all games on the authenticated user's wishlist with extra
+// data populated by getting the Steam App info
+func (sc *SteamClient) GetWishlist() (*map[string]SteamGame, error) {
 	wishlist, err := sc.steam.GetUserWishlist(sc.steamID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get user wishlist: %s", err.Error())
 	}
 
-	var games []SteamGame
-	for id := range *wishlist {
-		steamApp, err := sc.steam.GetApp(string(id))
+	games := make(map[string]SteamGame)
+	for _, wishlistApp := range wishlist {
+		steamApp, err := sc.steam.GetApp(wishlistApp.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -137,7 +148,7 @@ func (sc *SteamClient) GetWishlist() (*[]SteamGame, error) {
 			genres = append(genres, genre.Description)
 		}
 		game := SteamGame{
-			ID:          id,
+			ID:          wishlistApp.ID,
 			Name:        steamApp.Data.Name,
 			HeaderImage: steamApp.Data.HeaderImage,
 			Genres:      genres,
@@ -150,13 +161,18 @@ func (sc *SteamClient) GetWishlist() (*[]SteamGame, error) {
 			}
 			game.ReleaseDate = releaseDate
 		}
-		games = append(games, game)
+		_, ok := games[game.Name]
+		if !ok {
+			games[game.Name] = game
+		}
 	}
 
 	return &games, nil
 }
 
-func (sc *SteamClient) GetLibrary() (*[]SteamGame, error) {
+// GetLibrary gets all games owned by the authenticated user with extra
+// data populated by getting the Steam App info
+func (sc *SteamClient) GetLibrary() (*map[string]SteamGame, error) {
 	library, err := sc.steam.GetUserOwnedGames(sc.steamID)
 	if err != nil {
 		return nil, err
@@ -171,7 +187,7 @@ func (sc *SteamClient) GetLibrary() (*[]SteamGame, error) {
 		collectionMap[game.AppID.String()] = collections
 	}
 
-	var games []SteamGame
+	games := make(map[string]SteamGame)
 	for _, game := range library.Response.Games {
 		if len(collectionMap[game.AppID.String()]) > 0 {
 			steamApp, err := sc.steam.GetApp(string(game.AppID))
@@ -225,13 +241,17 @@ func (sc *SteamClient) GetLibrary() (*[]SteamGame, error) {
 				HasCommunityVisibleStats: game.HasCommunityVisibleStats,
 				Collections:              collectionMap[game.AppID.String()],
 			}
-			games = append(games, game)
+			_, ok := games[game.Name]
+			if !ok {
+				games[game.Name] = game
+			}
 		}
 	}
 
 	return &games, nil
 }
 
+// GetApp gets a Steam App
 func (sc *SteamClient) GetApp(appID string) (*steam.SteamApp, error) {
 	steamApp, err := sc.steam.GetApp(appID)
 	if err != nil {
@@ -240,6 +260,7 @@ func (sc *SteamClient) GetApp(appID string) (*steam.SteamApp, error) {
 	return steamApp, nil
 }
 
+// ParseSteamDate attempts to parse various formats of dates used by Steam apps
 func ParseSteamDate(steamDate string) (time.Time, error) {
 	date, err := time.Parse(steamDateFormat, steamDate)
 	if err != nil {
@@ -264,10 +285,12 @@ func ParseSteamDate(steamDate string) (time.Time, error) {
 	}
 }
 
+// ParsePlaytime parses a JSON timestamp into a Golang time.Time type
 func ParsePlaytime(timestamp int64) time.Time {
 	return time.Unix(timestamp, 0)
 }
 
+// libraryCollectionCheck checks which manually tracked Library Collections a game is in
 func libraryCollectionCheck(sc *SteamClient, appID string) (map[string]bool, error) {
 	collections := make(map[string]bool)
 	for _, id := range sc.collections.completed {

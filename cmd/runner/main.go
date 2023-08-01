@@ -3,119 +3,57 @@ package main
 import (
 	"context"
 	"fmt"
-	"kanbanchan/internal/aws"
 	"kanbanchan/internal/notion"
 	"kanbanchan/internal/steam"
 )
 
+type clients struct {
+	steamClient  *steam.SteamClient
+	notionClient *notion.NotionClient
+}
+
 func main() {
-	// testNotionDatabaseProperties()
-	// testNotionDatabasePages()
-	testSteamWishlist()
-	// testSteamLibrary()
-	// testSteamApp()
-}
-
-// =======================================================
-
-func testNotionDatabasePages() {
-	secrets, err := aws.GetSecrets()
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
+	// testSuite() // quick output sanity check testing stuff
+	// =======================================================
 
 	nc, err := notion.NewClient(context.Background())
 	if err != nil {
-		fmt.Println(err.Error())
+		fmt.Printf("failed to create notion client: %s", err.Error())
 		return
 	}
 
-	err = nc.GetDatabasePages(secrets.Notion.GameDB)
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-}
-
-func testNotionDatabaseProperties() {
-	secrets, err := aws.GetSecrets()
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-	nc, err := notion.NewClient(context.Background())
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-	err = nc.GetDatabase(secrets.Notion.GameDB)
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-}
-
-func testSteamWishlist() {
 	sc, err := steam.NewClient(context.Background())
 	if err != nil {
-		fmt.Println(err.Error())
+		fmt.Printf("failed to create steam client: %s", err.Error())
 		return
 	}
 
-	wishlist, err := sc.GetWishlist()
-	if err != nil {
-		fmt.Println(err.Error())
-		return
+	runner := clients{
+		steamClient:  sc,
+		notionClient: nc,
 	}
 
-	// fmt.Println((*wishlist))
-	fmt.Println(len(*wishlist))
+	runner.syncGames()
 }
 
-func testSteamLibrary() {
-	sc, err := steam.NewClient(context.Background())
+func (c *clients) syncGames() error {
+	library, err := c.steamClient.GetLibrary()
 	if err != nil {
-		fmt.Println(err.Error())
-		return
+		return fmt.Errorf("failed to get steam library: %s", err.Error())
 	}
 
-	gameLibrary, err := sc.GetLibrary()
+	wishlist, err := c.steamClient.GetWishlist()
 	if err != nil {
-		fmt.Println(err.Error())
-		return
+		return fmt.Errorf("failed to get steam library: %s", err.Error())
 	}
 
-	game := (*gameLibrary)[0]
-
-	fmt.Printf("Release Date: %s\n", game.ReleaseDate)
-	fmt.Println("Games in library:", len(*gameLibrary))
-}
-
-func testSteamApp() {
-	sc, err := steam.NewClient(context.Background())
+	notionGames, err := c.notionClient.GetGamePages()
 	if err != nil {
-		fmt.Println(err.Error())
-		return
+		return fmt.Errorf("failed to get notion games: %s", err.Error())
 	}
 
-	app, err := sc.GetApp("445980")
-	fmt.Printf("Name: %s\nRelease Date: %s\nGenres: ", app.Data.Name, app.Data.ReleaseDate.Date)
-	for _, genre := range app.Data.Genres {
-		fmt.Printf("%s, ", genre.Description)
-	}
-	fmt.Println()
-}
+	// For every game in library, check to see if its in notionGames. If not, add
+	// For every game in wishlist, check to see if its in notionGames. If not, add
 
-func testKeys() {
-	keys, err := aws.GetSecrets()
-	if err != nil {
-		fmt.Println(err.Error())
-		return
-	}
-
-	fmt.Printf("Discord: %s\nGoogle: %s\nNotion: %s\nSteam: %s\n",
-		keys.Discord.Key, keys.Google.Key, keys.Notion, keys.Steam)
+	return nil
 }

@@ -14,12 +14,15 @@ const (
 	steamURL    = "https://store.steampowered.com"
 )
 
+// SteamClient contains authentication info for the Steam client
 type SteamClient struct {
 	ctx      context.Context
 	steamKey string
 }
 
+// WishlistApp defines the data retrieved for an app on a user's wishlist
 type WishlistApp struct {
+	ID          string      `json:"id,omitempty"`
 	Name        string      `json:"name"`
 	Capsule     string      `json:"capsule"`
 	ReleaseDate json.Number `json:"release_date"`
@@ -27,6 +30,7 @@ type WishlistApp struct {
 	Tags        []string    `json:"tags"`
 }
 
+// OwnedApps defines the response received from retrieving all of a user's owned apps
 type OwnedApps struct {
 	Response struct {
 		GameCount json.Number `json:"game_count"`
@@ -45,6 +49,7 @@ type OwnedApps struct {
 	} `json:"response"`
 }
 
+// SteamApp defines the response received from retrieving a specific Steam app by ID
 type SteamApp struct {
 	Success bool `json:"success"`
 	Data    struct {
@@ -62,6 +67,7 @@ type SteamApp struct {
 	} `json:"data"`
 }
 
+// NewClient creates a new Steam client authenticated with the supplied steam key
 func NewClient(ctx context.Context, steamKey string) (*SteamClient, error) {
 	var client SteamClient
 	if ctx == nil {
@@ -77,29 +83,47 @@ func NewClient(ctx context.Context, steamKey string) (*SteamClient, error) {
 	return &client, nil
 }
 
-// TODO paginate with ?p=0 (page 0), ?p=1 (page 1), etc. at the end of the URL until nothing is returned (still 200, just empty array)
-func (sc *SteamClient) GetUserWishlist(steamUserID string) (*map[string]WishlistApp, error) {
-	var wishlist map[string]WishlistApp
-	endpoint := fmt.Sprintf("/wishlist/profiles/%s/wishlistdata/", steamUserID)
-	resp, err := http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+// GetUserWishlist returns a list of apps on the specified user's wishlist
+func (sc *SteamClient) GetUserWishlist(steamUserID string) ([]WishlistApp, error) {
+	var wishlist []WishlistApp
+	i := 0
+	for {
+		var wishlistPage map[string]WishlistApp
+		endpoint := fmt.Sprintf("/wishlist/profiles/%s/wishlistdata/?p=%d", steamUserID, i)
+		resp, err := http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
+		if err != nil {
+			return nil, fmt.Errorf("failed to make http request to get wishlist: %s", err.Error())
+		}
+		defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body: %s", err.Error())
+		}
+
+		if string(body) == "[]" { // no entries returned
+			break
+		}
+
+		err = json.Unmarshal(body, &wishlistPage)
+		if err != nil {
+			fmt.Println(string(body), resp.Status, resp.StatusCode)
+			return nil, fmt.Errorf("failed to unmarshal response body: %s", err.Error())
+		}
+
+		for k, v := range wishlistPage {
+			wishlistApp := v
+			wishlistApp.ID = k
+			wishlist = append(wishlist, wishlistApp)
+		}
+
+		i++
 	}
 
-	err = json.Unmarshal(body, &wishlist)
-	if err != nil {
-		return nil, err
-	}
-
-	return &wishlist, nil
+	return wishlist, nil
 }
 
+// GetUserOwnedGames returns information about all games owned by the specified user
 func (sc *SteamClient) GetUserOwnedGames(steamUserID string) (*OwnedApps, error) {
 	// Optional URL Params: &skip_unvetted_apps=false | &include_played_free_games=1 | &include_appinfo=1
 	var ownedApps OwnedApps
@@ -122,6 +146,7 @@ func (sc *SteamClient) GetUserOwnedGames(steamUserID string) (*OwnedApps, error)
 	return &ownedApps, nil
 }
 
+// GetApp retrieves steam app information for the specified app ID
 func (sc *SteamClient) GetApp(appID string) (*SteamApp, error) {
 	var app map[string]SteamApp
 	endpoint := fmt.Sprintf("/api/appdetails?appids=%s", appID)
