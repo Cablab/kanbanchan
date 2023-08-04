@@ -29,15 +29,17 @@ type LocalSecrets struct {
 		MovieDB   string `json:"movieDB"`
 		TVDB      string `json:"tvDB"`
 		TestGame  string `json:"testGame"`
-		TestFilm  string `json:"testFilm"`
+		TestAnime string `json:"testAnime"`
+		TestMovie string `json:"testMovie"`
+		TestTV    string `json:"testTV"`
 	} `json:"notion"`
 	Steam struct {
 		ID          string `json:"id"`
 		Key         string `json:"key"`
 		Collections struct {
-			Completed []json.Number `json:"completed"`
-			Playing   []json.Number `json:"playing"`
-			UpNext    []json.Number `json:"upNext"`
+			Finished []json.Number `json:"finished"`
+			Playing  []json.Number `json:"playing"`
+			UpNext   []json.Number `json:"upNext"`
 		} `json:"collections"`
 	} `json:"steam"`
 }

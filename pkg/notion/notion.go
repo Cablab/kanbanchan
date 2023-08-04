@@ -29,7 +29,7 @@ func NewClient(ctx context.Context, authToken string) (*NotionClient, error) {
 func (nc *NotionClient) GetDatabase(databaseID string) (*notionapi.Database, error) {
 	db, err := nc.client.Database.Get(nc.ctx, notionapi.DatabaseID(databaseID))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get database: %s", err.Error())
+		return nil, fmt.Errorf("failed to get database id %s: %s", databaseID, err.Error())
 	}
 
 	return db, nil
@@ -41,14 +41,14 @@ func (nc *NotionClient) GetDatabasePages(databaseID string, opts *notionapi.Data
 
 	res, err := nc.client.Database.Query(nc.ctx, notionapi.DatabaseID(databaseID), opts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve database pages: %s", err.Error())
+		return nil, fmt.Errorf("failed to retrieve pages from database id %s: %s", databaseID, err.Error())
 	}
 	pages = append(pages, res.Results...)
 	for res.HasMore {
 		opts.StartCursor = res.NextCursor
 		res, err = nc.client.Database.Query(nc.ctx, notionapi.DatabaseID(databaseID), opts)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve database pages: %s", err.Error())
+			return nil, fmt.Errorf("failed to retrieve pages from database id %s: %s", databaseID, err.Error())
 		}
 		pages = append(pages, res.Results...)
 	}

@@ -92,7 +92,7 @@ func (sc *SteamClient) GetUserWishlist(steamUserID string) ([]WishlistApp, error
 		endpoint := fmt.Sprintf("/wishlist/profiles/%s/wishlistdata/?p=%d", steamUserID, i)
 		resp, err := http.Get(fmt.Sprintf("%s%s", steamURL, endpoint))
 		if err != nil {
-			return nil, fmt.Errorf("failed to make http request to get wishlist: %s", err.Error())
+			return nil, fmt.Errorf("failed to make http request to get wishlist for user id %s: %s", steamUserID, err.Error())
 		}
 		defer resp.Body.Close()
 

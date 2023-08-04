@@ -10,9 +10,9 @@ import (
 
 func testSuite() {
 	// testNotionDatabaseProperties()
-	testNotionDatabasePages()
+	// testNotionDatabasePages()
 	// testSteamWishlist()
-	// testSteamLibrary()
+	testSteamLibrary()
 	// testSteamApp()
 }
 
@@ -29,8 +29,12 @@ func testNotionDatabasePages() {
 		return
 	}
 
-	fmt.Println("Number of found games:", len(games))
-	notion.PrintGameProperties(games[0])
+	fmt.Println("Number of found games:", len(*games))
+
+	for _, val := range *games {
+		notion.PrintGameProperties(val)
+		break
+	}
 }
 
 func testNotionDatabaseProperties() {
@@ -72,8 +76,11 @@ func testSteamWishlist() {
 	}
 
 	// fmt.Println((*wishlist))
-	fmt.Println(len(wishlist))
-	fmt.Println(wishlist[0])
+	fmt.Println(len(*wishlist))
+	for _, val := range *wishlist {
+		fmt.Println(val)
+		break
+	}
 }
 
 func testSteamLibrary() {
@@ -89,10 +96,14 @@ func testSteamLibrary() {
 		return
 	}
 
-	game := gameLibrary[0]
+	for _, game := range *gameLibrary {
+		fmt.Printf("Release Date: %s\n", game.ReleaseDate)
+		break
 
-	fmt.Printf("Release Date: %s\n", game.ReleaseDate)
-	fmt.Println("Games in library:", len(gameLibrary))
+		// fmt.Printf("%s\t, %s\n", game.ID, game.Name)
+	}
+
+	fmt.Println("Games in library:", len(*gameLibrary))
 }
 
 func testSteamApp() {

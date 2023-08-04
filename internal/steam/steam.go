@@ -11,6 +11,10 @@ import (
 )
 
 const (
+	CollectionFinished = "Finished"
+	CollectionUpNext   = "Up Next"
+	CollectionPlaying  = "Playing"
+
 	steamAPIURL         = "https://api.steampowered.com"
 	steamURL            = "https://store.steampowered.com"
 	steamDateFormat     = "Jan 2, 2006"
@@ -24,9 +28,9 @@ type SteamClient struct {
 	steamKey    string
 	steamID     string
 	collections struct {
-		completed []string
-		upNext    []string
-		playing   []string
+		finished []string
+		upNext   []string
+		playing  []string
 	}
 }
 
@@ -113,9 +117,9 @@ func NewClient(ctx context.Context) (*SteamClient, error) {
 	}
 	client.steam = *steamClient
 
-	var completed, upNext, playing []string
-	for _, jnum := range secrets.Steam.Collections.Completed {
-		completed = append(completed, jnum.String())
+	var finished, upNext, playing []string
+	for _, jnum := range secrets.Steam.Collections.Finished {
+		finished = append(finished, jnum.String())
 	}
 	for _, jnum := range secrets.Steam.Collections.UpNext {
 		upNext = append(upNext, jnum.String())
@@ -123,7 +127,7 @@ func NewClient(ctx context.Context) (*SteamClient, error) {
 	for _, jnum := range secrets.Steam.Collections.Playing {
 		playing = append(playing, jnum.String())
 	}
-	client.collections.completed = completed
+	client.collections.finished = finished
 	client.collections.upNext = upNext
 	client.collections.playing = playing
 	return &client, nil
@@ -134,7 +138,7 @@ func NewClient(ctx context.Context) (*SteamClient, error) {
 func (sc *SteamClient) GetWishlist() (*map[string]SteamGame, error) {
 	wishlist, err := sc.steam.GetUserWishlist(sc.steamID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user wishlist: %s", err.Error())
+		return nil, fmt.Errorf("failed to get wishlist for user id %s: %s", sc.steamID, err.Error())
 	}
 
 	games := make(map[string]SteamGame)
@@ -293,21 +297,21 @@ func ParsePlaytime(timestamp int64) time.Time {
 // libraryCollectionCheck checks which manually tracked Library Collections a game is in
 func libraryCollectionCheck(sc *SteamClient, appID string) (map[string]bool, error) {
 	collections := make(map[string]bool)
-	for _, id := range sc.collections.completed {
+	for _, id := range sc.collections.finished {
 		if id == appID {
-			collections["Completed"] = true
+			collections[CollectionFinished] = true
 			break
 		}
 	}
 	for _, id := range sc.collections.upNext {
 		if id == appID {
-			collections["UpNext"] = true
+			collections[CollectionUpNext] = true
 			break
 		}
 	}
 	for _, id := range sc.collections.playing {
 		if id == appID {
-			collections["Playing"] = true
+			collections[CollectionPlaying] = true
 			break
 		}
 	}

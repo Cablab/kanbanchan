@@ -33,7 +33,11 @@ func main() {
 		notionClient: nc,
 	}
 
-	runner.syncGames()
+	err = runner.syncGames()
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
 }
 
 func (c *clients) syncGames() error {
@@ -44,7 +48,7 @@ func (c *clients) syncGames() error {
 
 	wishlist, err := c.steamClient.GetWishlist()
 	if err != nil {
-		return fmt.Errorf("failed to get steam library: %s", err.Error())
+		return fmt.Errorf("failed to get steam wishlist: %s", err.Error())
 	}
 
 	notionGames, err := c.notionClient.GetGamePages()
@@ -53,7 +57,26 @@ func (c *clients) syncGames() error {
 	}
 
 	// For every game in library, check to see if its in notionGames. If not, add
+	for _, game := range *library {
+		_, ok := (*notionGames)[game.Name]
+		if !ok {
+			err := c.notionClient.AddGame(game)
+			if err != nil {
+				return fmt.Errorf("failed to add game %s: %s", game.Name, err.Error())
+			}
+		}
+	}
+
 	// For every game in wishlist, check to see if its in notionGames. If not, add
+	for _, game := range *wishlist {
+		_, ok := (*notionGames)[game.Name]
+		if !ok {
+			err := c.notionClient.AddGame(game)
+			if err != nil {
+				return fmt.Errorf("failed to add game %s: %s", game.Name, err.Error())
+			}
+		}
+	}
 
 	return nil
 }
