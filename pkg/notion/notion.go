@@ -3,6 +3,7 @@ package notion
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jomei/notionapi"
 )
@@ -64,4 +65,10 @@ func (nc *NotionClient) CreatePage(opts *notionapi.PageCreateRequest) (*notionap
 	}
 
 	return page, nil
+}
+
+// TODO this is incomplete
+func (nc *NotionClient) ParseNotionDate(date notionapi.Date) (time.Time, error) {
+	fmt.Println(date.String())
+	return time.Time{}, nil
 }

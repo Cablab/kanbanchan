@@ -12,8 +12,9 @@ func testSuite() {
 	// testNotionDatabaseProperties()
 	// testNotionDatabasePages()
 	// testSteamWishlist()
-	testSteamLibrary()
+	// testSteamLibrary()
 	// testSteamApp()
+	testSteamAppName()
 }
 
 func testNotionDatabasePages() {
@@ -23,7 +24,7 @@ func testNotionDatabasePages() {
 		return
 	}
 
-	games, err := nc.GetGamePages()
+	games, err := nc.GetGamePages(nil)
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -114,6 +115,21 @@ func testSteamApp() {
 	}
 
 	app, err := sc.GetApp("445980")
+	fmt.Printf("Name: %s\nRelease Date: %s\nGenres: ", app.Data.Name, app.Data.ReleaseDate.Date)
+	for _, genre := range app.Data.Genres {
+		fmt.Printf("%s, ", genre.Description)
+	}
+	fmt.Println()
+}
+
+func testSteamAppName() {
+	sc, err := steam.NewClient(context.Background())
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+
+	app, err := sc.GetAppByName("Destiny 2")
 	fmt.Printf("Name: %s\nRelease Date: %s\nGenres: ", app.Data.Name, app.Data.ReleaseDate.Date)
 	for _, genre := range app.Data.Genres {
 		fmt.Printf("%s, ", genre.Description)

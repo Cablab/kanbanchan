@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	statusUnreleased = "Unreleased"
-	statusUnowned    = "Unowned"
-	statusPlaying    = "Playing"
+	StatusUnreleased = "Unreleased"
+	StatusUnowned    = "Unowned"
+	StatusPlaying    = "Playing"
 )
 
 // GameProperties contains info about pages in the Games database
@@ -31,17 +31,14 @@ type GameProperties struct {
 }
 
 // GetGamePages retrieves all pages in the Games DB
-func (nc *NotionClient) GetGamePages() (*map[string]GameProperties, error) {
+func (nc *NotionClient) GetGamePages(options *notionapi.DatabaseQueryRequest) (*map[string]GameProperties, error) {
 	gameDB := nc.dbIDs.gameDB
 	env := os.Getenv("ENVIRONMENT")
 	if env == "development" || env == "dev" || env == "staging" || env == "local" {
 		gameDB = nc.dbIDs.testGame
 	}
-	opts := &notionapi.DatabaseQueryRequest{
-		PageSize: 100,
-		Sorts:    []notionapi.SortObject{{Property: "Name", Direction: "ascending"}},
-	}
-	pages, err := nc.client.GetDatabasePages(gameDB, opts)
+	options = setQueryOptions(options)
+	pages, err := nc.client.GetDatabasePages(gameDB, options)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get game pages from database id %s: %s", gameDB, err.Error())
 	}
@@ -203,14 +200,32 @@ func determineGameStatus(game steam.SteamGame) string {
 	finishedVal, finishedOk := game.Collections[steam.CollectionFinished]
 
 	if finishedOk && finishedVal {
-		return statusFinished
+		return StatusFinished
 	} else if playingOk && playingVal {
-		return statusPlaying
+		return StatusPlaying
 	} else if upNextOk && upNextVal {
-		return statusUpNext
+		return StatusUpNext
 	} else if game.ReleaseDate.Before(time.Now()) {
-		return statusUnowned
+		return StatusUnowned
 	} else {
-		return statusUnreleased
+		return StatusUnreleased
 	}
+}
+
+func setQueryOptions(options *notionapi.DatabaseQueryRequest) *notionapi.DatabaseQueryRequest {
+	if options == nil || options == (&notionapi.DatabaseQueryRequest{}) { // default to returning all games
+		return &notionapi.DatabaseQueryRequest{
+			PageSize: 100,
+			Sorts:    []notionapi.SortObject{{Property: "Name", Direction: "ascending"}},
+		}
+	}
+
+	if options.PageSize == 0 { // default to pages of size 100
+		options.PageSize = 100
+	}
+	if len(options.Sorts) == 0 { // default to sort by Name ascending
+		options.Sorts = []notionapi.SortObject{{Property: "Name", Direction: "ascending"}}
+	}
+
+	return options
 }

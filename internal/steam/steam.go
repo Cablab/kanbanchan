@@ -264,6 +264,15 @@ func (sc *SteamClient) GetApp(appID string) (*steam.SteamApp, error) {
 	return steamApp, nil
 }
 
+// GetAppByName gets a Steam App
+func (sc *SteamClient) GetAppByName(appName string) (*steam.SteamApp, error) {
+	steamApp, err := sc.steam.GetAppByName(appName)
+	if err != nil {
+		return nil, err
+	}
+	return steamApp, nil
+}
+
 // ParseSteamDate attempts to parse various formats of dates used by Steam apps
 func ParseSteamDate(steamDate string) (time.Time, error) {
 	date, err := time.Parse(steamDateFormat, steamDate)

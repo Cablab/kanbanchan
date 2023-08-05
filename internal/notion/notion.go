@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	statusUpNext   = "Up Next"
-	statusFinished = "Finished"
+	StatusUpNext   = "Up Next"
+	StatusFinished = "Finished"
 )
 
 // NotionClient contains a usable Notion client and information about

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"strings"
@@ -167,4 +168,54 @@ func (sc *SteamClient) GetApp(appID string) (*SteamApp, error) {
 
 	steamApp := app[appID]
 	return &steamApp, nil
+}
+
+// GetAppByName gets a Steam App
+func (sc *SteamClient) GetAppByName(appName string) (*SteamApp, error) {
+	var allApps struct {
+		Applist struct {
+			Apps []struct {
+				Appid int    `json:"appid"`
+				Name  string `json:"name"`
+			} `json:"apps"`
+		} `json:"applist"`
+	}
+	endpoint := fmt.Sprintf("/ISteamApps/GetAppList/v0002/?key=%s&format=json", sc.steamKey)
+	resp, err := http.Get(fmt.Sprintf("%s%s", steamAPIURL, endpoint))
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve all steam apps: %s", err.Error())
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal(body, &allApps)
+	if err != nil {
+		return nil, err
+	}
+
+	found := false
+	foundID := 0
+	cleanedSearch := html.UnescapeString(strings.TrimSpace(strings.ToLower(appName)))
+	for _, app := range allApps.Applist.Apps {
+		cleanedApp := html.UnescapeString(strings.TrimSpace(strings.ToLower(app.Name)))
+		if cleanedSearch == cleanedApp {
+			found = true
+			foundID = app.Appid
+			break
+		}
+	}
+
+	if !found {
+		return nil, fmt.Errorf("failed to find steam app \"%s\"", appName)
+	}
+
+	app, err := sc.GetApp(fmt.Sprintf("%d", foundID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get steam app by id %d: %s", foundID, err.Error())
+	}
+
+	return app, nil
 }

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"kanbanchan/internal/notion"
 	"kanbanchan/internal/steam"
+	pkgnotion "kanbanchan/pkg/notion"
+
+	"github.com/jomei/notionapi"
 )
 
 type clients struct {
@@ -33,7 +36,13 @@ func main() {
 		notionClient: nc,
 	}
 
-	err = runner.syncGames()
+	// err = runner.syncGames()
+	// if err != nil {
+	// 	fmt.Println(err.Error())
+	// 	return
+	// }
+
+	err = runner.transitionGames()
 	if err != nil {
 		fmt.Println(err.Error())
 		return
@@ -51,7 +60,7 @@ func (c *clients) syncGames() error {
 		return fmt.Errorf("failed to get steam wishlist: %s", err.Error())
 	}
 
-	notionGames, err := c.notionClient.GetGamePages()
+	notionGames, err := c.notionClient.GetGamePages(nil)
 	if err != nil {
 		return fmt.Errorf("failed to get notion games: %s", err.Error())
 	}
@@ -78,5 +87,39 @@ func (c *clients) syncGames() error {
 		}
 	}
 
+	return nil
+}
+
+// TODO the is incomplete
+func (c *clients) transitionGames() error {
+	options := &notionapi.DatabaseQueryRequest{
+		Filter: notionapi.PropertyFilter{
+			Property: "Status",
+			Status: &notionapi.StatusFilterCondition{
+				Equals: notion.StatusUnreleased,
+			},
+		},
+	}
+
+	games, err := c.notionClient.GetGamePages(options)
+	if err != nil {
+		return fmt.Errorf("failed to get unreleased games: %s", err.Error())
+	}
+
+	nc := pkgnotion.NotionClient{}
+	for title, game := range *games {
+		if game.ReleaseDate == nil || game.ReleaseDate.Date == nil || game.ReleaseDate.Date.Start == nil {
+			continue
+		}
+		fmt.Println(title) // TODO for testing
+		_, err := nc.ParseNotionDate(*game.ReleaseDate.Date.Start)
+		if err != nil {
+			return fmt.Errorf("failed to parse release date for \"%s\": %s", title, err.Error())
+		}
+		// break // TODO for testing
+		// if time.Now().Before(releaseDate) {
+		// 	// Transition to Unowned
+		// }
+	}
 	return nil
 }
