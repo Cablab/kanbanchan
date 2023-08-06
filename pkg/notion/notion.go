@@ -67,8 +67,10 @@ func (nc *NotionClient) CreatePage(opts *notionapi.PageCreateRequest) (*notionap
 	return page, nil
 }
 
-// TODO this is incomplete
 func (nc *NotionClient) ParseNotionDate(date notionapi.Date) (time.Time, error) {
-	fmt.Println(date.String())
-	return time.Time{}, nil
+	timestamp, err := time.Parse(time.RFC3339, date.String())
+	if err != nil {
+		return time.Time{}, fmt.Errorf("failed to parse notion date timestamp: %s", err.Error())
+	}
+	return timestamp, nil
 }

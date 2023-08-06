@@ -6,6 +6,7 @@ import (
 	"kanbanchan/internal/notion"
 	"kanbanchan/internal/steam"
 	pkgnotion "kanbanchan/pkg/notion"
+	"time"
 
 	"github.com/jomei/notionapi"
 )
@@ -90,7 +91,6 @@ func (c *clients) syncGames() error {
 	return nil
 }
 
-// TODO the is incomplete
 func (c *clients) transitionGames() error {
 	options := &notionapi.DatabaseQueryRequest{
 		Filter: notionapi.PropertyFilter{
@@ -111,15 +111,15 @@ func (c *clients) transitionGames() error {
 		if game.ReleaseDate == nil || game.ReleaseDate.Date == nil || game.ReleaseDate.Date.Start == nil {
 			continue
 		}
-		fmt.Println(title) // TODO for testing
-		_, err := nc.ParseNotionDate(*game.ReleaseDate.Date.Start)
+
+		releaseDate, err := nc.ParseNotionDate(*game.ReleaseDate.Date.Start)
 		if err != nil {
 			return fmt.Errorf("failed to parse release date for \"%s\": %s", title, err.Error())
 		}
-		// break // TODO for testing
-		// if time.Now().Before(releaseDate) {
-		// 	// Transition to Unowned
-		// }
+		if time.Now().Before(releaseDate) {
+			// // TODO Transition to Unowned
+			fmt.Printf("Transitioning \"%s\" to Unowned\n", title)
+		}
 	}
 	return nil
 }
