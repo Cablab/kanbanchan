@@ -3,6 +3,7 @@ package notion
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jomei/notionapi"
@@ -36,6 +37,23 @@ func (nc *NotionClient) GetDatabase(databaseID string) (*notionapi.Database, err
 	return db, nil
 }
 
+// GetPageByID fetches a single page by ID
+func (nc *NotionClient) GetPageByID(ctx context.Context, pageID string) (*notionapi.Page, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if strings.TrimSpace(pageID) == "" {
+		return nil, fmt.Errorf("request made with empty page id")
+	}
+
+	page, err := nc.client.Page.Get(ctx, notionapi.PageID(pageID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve page id %s: %s", pageID, err.Error())
+	}
+
+	return page, nil
+}
+
 // GetDatabasePages retrieves all pages from the specified database
 func (nc *NotionClient) GetDatabasePages(databaseID string, opts *notionapi.DatabaseQueryRequest) ([]notionapi.Page, error) {
 	var pages []notionapi.Page
@@ -67,6 +85,24 @@ func (nc *NotionClient) CreatePage(opts *notionapi.PageCreateRequest) (*notionap
 	return page, nil
 }
 
+// UpdatePage updates the specified page
+func (nc *NotionClient) UpdatePage(ctx context.Context, pageID string, opts *notionapi.PageUpdateRequest) (*notionapi.Page, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if strings.TrimSpace(pageID) == "" {
+		return nil, fmt.Errorf("request made with empty page id")
+	}
+
+	page, err := nc.client.Page.Update(ctx, notionapi.PageID(pageID), opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update page id %s: %s", pageID, err.Error())
+	}
+
+	return page, nil
+}
+
+// ParseNotionDate takes a Notion date and parses it to Golang time
 func (nc *NotionClient) ParseNotionDate(date notionapi.Date) (time.Time, error) {
 	timestamp, err := time.Parse(time.RFC3339, date.String())
 	if err != nil {

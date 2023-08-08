@@ -1,6 +1,7 @@
 package notion
 
 import (
+	"context"
 	"fmt"
 	"kanbanchan/internal/steam"
 	"os"
@@ -18,6 +19,7 @@ const (
 
 // GameProperties contains info about pages in the Games database
 type GameProperties struct {
+	PageID            string                         `json:"pageID"`
 	Name              *notionapi.TitleProperty       `json:"name,omitempty"`
 	Status            *notionapi.StatusProperty      `json:"status,omitempty"`
 	Tags              *notionapi.MultiSelectProperty `json:"tags,omitempty"`
@@ -28,6 +30,16 @@ type GameProperties struct {
 	ReleaseDate       *notionapi.DateProperty        `json:"releaseDate,omitempty"`
 	Rating            *notionapi.RichTextProperty    `json:"rating,omitempty"`
 	Notes             *notionapi.RichTextProperty    `json:"notes,omitempty"`
+}
+
+// GetGamePageByID fetches a single game page by its ID
+func (nc *NotionClient) GetGamePageByID(gameID string) (*notionapi.Page, error) {
+	page, err := nc.client.GetPageByID(context.Background(), gameID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve game id %s: %s", gameID, err.Error())
+	}
+
+	return page, nil
 }
 
 // GetGamePages retrieves all pages in the Games DB
@@ -46,6 +58,7 @@ func (nc *NotionClient) GetGamePages(options *notionapi.DatabaseQueryRequest) (*
 	games := make(map[string]GameProperties)
 	for _, page := range pages {
 		game := GameProperties{
+			PageID:            page.ID.String(),
 			Name:              page.Properties["Name"].(*notionapi.TitleProperty),
 			Status:            page.Properties["Status"].(*notionapi.StatusProperty),
 			Tags:              page.Properties["Tags"].(*notionapi.MultiSelectProperty),
@@ -144,10 +157,24 @@ func (nc *NotionClient) AddGame(game steam.SteamGame) error {
 	return nil
 }
 
+func (nc *NotionClient) UpdateGame(gameID string, props notionapi.Properties) error {
+	opts := &notionapi.PageUpdateRequest{
+		Properties: props,
+	}
+
+	_, err := nc.client.UpdatePage(context.Background(), gameID, opts)
+	if err != nil {
+		return fmt.Errorf("failed to update page id %s: %s", gameID, err.Error())
+	}
+
+	return nil
+}
+
 // PrintGameProperties prints the columns of a game from the Games DB in readable format
 func PrintGameProperties(gp GameProperties) {
 	builder := strings.Builder{}
 
+	builder.WriteString(fmt.Sprintf("Page ID: %s\n", gp.PageID))
 	builder.WriteString(fmt.Sprintf("Name: %s\n", gp.Name.Title[0].PlainText))
 	builder.WriteString(fmt.Sprintf("Status: %s\n", gp.Status.Status.Name))
 	if len(gp.Rating.RichText) != 0 {

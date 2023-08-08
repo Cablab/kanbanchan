@@ -117,8 +117,16 @@ func (c *clients) transitionGames() error {
 			return fmt.Errorf("failed to parse release date for \"%s\": %s", title, err.Error())
 		}
 		if time.Now().Before(releaseDate) {
-			// // TODO Transition to Unowned
-			fmt.Printf("Transitioning \"%s\" to Unowned\n", title)
+			gamePage, err := c.notionClient.GetGamePageByID(game.PageID)
+			if err != nil {
+				return fmt.Errorf("failed to retrieve game \"%s\" by id %s: %s", game.Name.Title[0].PlainText, game.PageID, err.Error())
+			}
+			gamePage.Properties["Status"].(*notionapi.StatusProperty).Status.Name = notion.StatusUnowned
+
+			err = c.notionClient.UpdateGame(game.PageID, gamePage.Properties)
+			if err != nil {
+				return fmt.Errorf("failed to transition %s to status Unowned: %s", game.Name.Title[0].PlainText, err.Error())
+			}
 		}
 	}
 	return nil
